@@ -2,25 +2,10 @@ import numpy as np
 
 from bokeh.events import MouseWheel, Tap
 from bokeh.io import curdoc
-from bokeh.layouts import column, row, widgetbox
-from bokeh.models import ColumnDataSource
+from bokeh.layouts import row, widgetbox
+from bokeh.models import ColumnDataSource, CustomJS
 from bokeh.models.mappers import LinearColorMapper
-from bokeh.models.widgets import CheckboxButtonGroup, Select, Slider
-from bokeh.palettes import (
-    Spectral11,
-    Greys256,
-    Inferno256,
-    Magma256,
-    Plasma256,
-    Viridis256,
-    Cividis256,
-    Purples9,
-    Blues9,
-    Greens9,
-    Oranges9,
-    Reds9,
-    Colorblind8,
-)
+from bokeh.models.widgets import CheckboxButtonGroup, Select, Slider, Toggle
 from functools import partial
 from .crosshair import CrosshairLines
 from .palettes import palette_dict, DEFAULT_PALETTE
@@ -42,6 +27,8 @@ class Series:
     }
     palette_select = None
     visibility_checkbox = None
+    histogram_toggle = None
+    crosshair_color_select = None
     widgets = []
 
     def __init__(self, data: np.ndarray):
@@ -58,7 +45,6 @@ class Series:
             self.figures[plane] = PlaneFigure(plane=plane)
             self.update_image(plane, self.get_plane_index(plane))
 
-        self.create_sliders()
         self.plane_indices.on_change('data', self.update_figure_indices)
 
     def _fix_image_orientation(self, plane: Plane, image: np.ndarray):
@@ -129,6 +115,7 @@ class Series:
         )
         self.sliders[plane].on_change(
             'value', partial(self.update_plane_index, plane=plane))
+        self.widgets.append(self.sliders[plane])
         return self.sliders[plane]
 
     def update_plane_index(self, attr, old, new, plane: Plane):
@@ -136,8 +123,7 @@ class Series:
 
     def create_sliders(self) -> None:
         for plane in self.sliders:
-            slider = self.create_slider(plane)
-            self.widgets.append(slider)
+            self.create_slider(plane)
 
     def set_slider_value(self, plane: Plane, value: int):
         self.sliders[plane].value = self._fix_index(plane, value)
@@ -167,7 +153,7 @@ class Series:
 
     def create_checkbox(self):
         self.visibility_checkbox = CheckboxButtonGroup(
-            labels=['Crosshair', 'Axes'], active=[0, 1])
+            labels=['Crosshair', 'Axes'], active=[0])
         self.visibility_checkbox.on_change('active', self.handle_checkbox)
         self.widgets.append(self.visibility_checkbox)
         return self.visibility_checkbox
@@ -189,6 +175,24 @@ class Series:
     def show_crosshairs(self):
         for plane in self.figures:
             self.figures[plane].crosshair_model.visible = True
+
+    def create_histogram_toggle_callback(self):
+        code = """
+            boxes = document.getElementsByClassName("histogram_range");
+            for (i = 0; i < boxes.length; i++) {
+                box = boxes[i]
+                if (!box.className.includes("hidden")) {box.className+=" hidden";}
+                else {box.className=box.className.replace(" hidden","");}
+            }
+        """
+        return CustomJS(code=code)
+
+    def create_histogram_toggle(self):
+        self.histogram_toggle = Toggle(label='Histogram')
+        self.histogram_toggle.callback = self.create_histogram_toggle_callback(
+        )
+        self.widgets.append(self.histogram_toggle)
+        return self.histogram_toggle
 
     def get_checkbox_index(self, label: str) -> int:
         return self.visibility_checkbox.labels.index(label)
@@ -223,11 +227,43 @@ class Series:
 
     def create_plane_figure(self, plane: Plane):
         fig = self.figures[plane]
-        fig.plot_figure()
+        layout = fig.create_layout()
         self.update_crosshair(plane)
         self.add_wheel_interaction(plane)
         self.add_click_interaction(plane)
-        self.layout.children.append(fig.model)
+        self.layout.children.append(layout)
+
+    def create_crosshair_color_select(self):
+        self.crosshair_color_select = Select(
+            title='Crosshair Color',
+            value='Black',
+            options=[
+                'Black',
+                'White',
+                'Grey',
+                'Red',
+                'Yellow',
+                'Blue',
+                'Orange',
+                'Purple',
+            ])
+        self.crosshair_color_select.on_change('value',
+                                              self.change_crosshair_color)
+        self.widgets.append(self.crosshair_color_select)
+        return self.crosshair_color_select
+
+    def change_crosshair_color(self, attr, old, new):
+        color = new.lower()
+        for plane in self.figures:
+            self.figures[plane].change_crosshair_color(color)
+
+    def create_widgets(self):
+        self.create_histogram_toggle()
+        self.create_sliders()
+        self.create_palette_select()
+        self.create_crosshair_color_select()
+        self.create_checkbox()
+        self.append_widgets()
 
     def append_widgets(self):
         self.layout.children.append(widgetbox(self.widgets))
@@ -235,9 +271,5 @@ class Series:
     def run(self):
         for plane in self.figures:
             self.create_plane_figure(plane)
-
-        self.create_palette_select()
-        self.create_checkbox()
-        self.append_widgets()
-
+        self.create_widgets()
         curdoc().add_root(self.layout)
