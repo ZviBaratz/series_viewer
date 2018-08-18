@@ -21,3 +21,22 @@ crosshair_line_dict = {
         CrosshairLines.VERTICAL: Plane.SAGITTAL
     },
 }
+
+crosshair_colors = [
+    'Black',
+    'White',
+    'Red',
+    'Green',
+    'Cyan',
+    'Yellow',
+    'Blue',
+    'Orange',
+    'Purple',
+    'Pink',
+    'Brown',
+    'Indigo',
+    'Lime',
+    'Grey',
+]
+
+DEFAULT_CROSSHAIR_COLOR = crosshair_colors[0]

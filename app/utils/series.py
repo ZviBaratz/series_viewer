@@ -5,9 +5,18 @@ from bokeh.io import curdoc
 from bokeh.layouts import row, widgetbox
 from bokeh.models import ColumnDataSource, CustomJS
 from bokeh.models.mappers import LinearColorMapper
-from bokeh.models.widgets import CheckboxButtonGroup, Select, Slider, Toggle
+from bokeh.models.widgets import (
+    CheckboxButtonGroup,
+    Select,
+    Slider,
+    Toggle,
+)
 from functools import partial
-from .crosshair import CrosshairLines
+from .crosshair import (
+    CrosshairLines,
+    crosshair_colors,
+    DEFAULT_CROSSHAIR_COLOR,
+)
 from .palettes import palette_dict, DEFAULT_PALETTE
 from .plane import Plane
 from .plane_figure import PlaneFigure
@@ -45,7 +54,7 @@ class Series:
             self.figures[plane] = PlaneFigure(plane=plane)
             self.update_image(plane, self.get_plane_index(plane))
 
-        self.plane_indices.on_change('data', self.update_figure_indices)
+        self.plane_indices.on_change('data', self.update_figures)
 
     def _fix_image_orientation(self, plane: Plane, image: np.ndarray):
         if plane in (Plane.SAGITTAL, Plane.CORONAL):
@@ -74,35 +83,35 @@ class Series:
         image = self.get_reoriented_image(plane, index)
         self.figures[plane].image = image
 
-    def update_figure_indices(self, attr, old, new):
+    def update_figures(self, attr, old, new):
         for plane_name in new:
-            if old[plane_name] is not new[plane_name]:
-                plane = getattr(Plane, plane_name)
-                new_index = new[plane_name][0]
+            old_index = old[plane_name][0]
+            new_index = new[plane_name][0]
+            if old_index is not new_index:
+                plane = Plane[plane_name]
                 self.update_image(plane, new_index)
-                for fig in self.figures:
-                    if fig != plane:
-                        self.update_crosshair(fig)
-                self.update_crosshair(plane)
+                self.update_crosshairs(skip=plane)
 
     def get_crosshair_line_plane(self, plane: Plane, line: CrosshairLines):
-        crosshair_dict = self.figures[plane].crosshair_dict
-        return crosshair_dict[line]
+        return self.figures[plane].crosshair_dict[line]
 
     def get_crosshair_index(self, plane: Plane, line: CrosshairLines):
         crosshair_line_plane = self.get_crosshair_line_plane(plane, line)
         return self.get_plane_index(crosshair_line_plane)
 
     def get_crosshair_indices(self, plane: Plane):
-        vertical_index = self.get_crosshair_index(plane,
-                                                  CrosshairLines.VERTICAL)
-        horizontal_index = self.get_crosshair_index(plane,
-                                                    CrosshairLines.HORIZONTAL)
-        return vertical_index, horizontal_index
+        x = self.get_crosshair_index(plane, CrosshairLines.VERTICAL)
+        y = self.get_crosshair_index(plane, CrosshairLines.HORIZONTAL)
+        return x, y
 
     def update_crosshair(self, plane: Plane):
         x, y = self.get_crosshair_indices(plane)
         self.figures[plane].update_crosshair(x, y)
+
+    def update_crosshairs(self, skip: Plane = None):
+        for plane in self.figures:
+            if plane is not skip:
+                self.update_crosshair(plane)
 
     def create_slider(self, plane: Plane) -> Slider:
         self.sliders[plane] = Slider(
@@ -219,34 +228,26 @@ class Series:
         return self.palette_select
 
     def handle_palette_change(self, attr, old, new):
-        palette_name = self.palette_select.value
-        palette = palette_dict[palette_name]
+        palette = palette_dict[self.palette_select.value]
         for fig in self.figures.values():
-            plot = fig.image_model
-            plot.glyph.color_mapper = LinearColorMapper(palette=palette)
+            glyph = fig.image_model.glyph
+            glyph.color_mapper = LinearColorMapper(palette=palette)
 
     def create_plane_figure(self, plane: Plane):
-        fig = self.figures[plane]
-        layout = fig.create_layout()
         self.update_crosshair(plane)
+        layout = self.figures[plane].create_layout()
+        self.layout.children.append(layout)
+        self.add_interactions(plane)
+
+    def add_interactions(self, plane: Plane):
         self.add_wheel_interaction(plane)
         self.add_click_interaction(plane)
-        self.layout.children.append(layout)
 
     def create_crosshair_color_select(self):
         self.crosshair_color_select = Select(
             title='Crosshair Color',
-            value='Black',
-            options=[
-                'Black',
-                'White',
-                'Grey',
-                'Red',
-                'Yellow',
-                'Blue',
-                'Orange',
-                'Purple',
-            ])
+            value=DEFAULT_CROSSHAIR_COLOR,
+            options=crosshair_colors)
         self.crosshair_color_select.on_change('value',
                                               self.change_crosshair_color)
         self.widgets.append(self.crosshair_color_select)
