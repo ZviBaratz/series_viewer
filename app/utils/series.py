@@ -34,32 +34,23 @@ class Series:
         Plane.SAGITTAL: None,
         Plane.CORONAL: None,
     }
+    start_indices = {
+        Plane.TRANSVERSE.name: [0],
+        Plane.SAGITTAL.name: [0],
+        Plane.CORONAL.name: [0],
+    }
     palette_select = None
     visibility_checkbox = None
     histogram_toggle = None
     crosshair_color_select = None
-    widgets = []
 
     def __init__(self, data: np.ndarray):
         self.data = data
 
-        self.plane_indices = ColumnDataSource(
-            data={
-                Plane.TRANSVERSE.name: [0],
-                Plane.SAGITTAL.name: [0],
-                Plane.CORONAL.name: [0],
-            })
-
-        for plane in self.figures:
-            self.figures[plane] = PlaneFigure(plane=plane)
-            self.update_image(plane, self.get_plane_index(plane))
-
+        self.plane_indices = ColumnDataSource(data=self.start_indices)
+        self.create_plane_figure_instances()
         self.plane_indices.on_change('data', self.update_figures)
-
-    def _fix_image_orientation(self, plane: Plane, image: np.ndarray):
-        if plane in (Plane.SAGITTAL, Plane.CORONAL):
-            return np.transpose(image)
-        return image
+        self.update_images_from_index_source()
 
     def _fix_index(self, plane: Plane, index: int):
         axis_size = self.data.shape[plane.value]
@@ -69,21 +60,18 @@ class Series:
             index = axis_size - 1
         return index
 
+    def create_plane_figure_instances(self):
+        for plane in self.figures:
+            self.figures[plane] = PlaneFigure(plane=plane)
+
     def get_plane_index(self, plane: Plane):
         return self.plane_indices.data[plane.name][0]
 
-    def get_image_data(self, plane: Plane, index: int):
-        return np.take(self.data, index, axis=plane.value)
-
-    def get_reoriented_image(self, plane: Plane, index: int):
-        image = self.get_image_data(plane, index)
-        return self._fix_image_orientation(plane, image)
-
-    def update_image(self, plane: Plane, index: int):
-        image = self.get_reoriented_image(plane, index)
-        self.figures[plane].image = image
+    def update_plane_index(self, attr, old, new, plane: Plane):
+        self.plane_indices.data[plane.name] = [new]
 
     def update_figures(self, attr, old, new):
+        print('called')
         for plane_name in new:
             old_index = old[plane_name][0]
             new_index = new[plane_name][0]
@@ -91,6 +79,16 @@ class Series:
                 plane = Plane[plane_name]
                 self.update_image(plane, new_index)
                 self.update_crosshairs(skip=plane)
+
+    def get_image_data(self, plane: Plane, index: int):
+        return np.take(self.data, index, axis=plane.value)
+
+    def update_image(self, plane: Plane, index: int):
+        self.figures[plane].image = self.get_image_data(plane, index)
+
+    def update_images_from_index_source(self):
+        for plane in self.figures:
+            self.update_image(plane, self.get_plane_index(plane))
 
     def get_crosshair_line_plane(self, plane: Plane, line: CrosshairLines):
         return self.figures[plane].crosshair_dict[line]
@@ -119,16 +117,12 @@ class Series:
             end=self.data.shape[plane.value] - 1,
             value=self.get_plane_index(plane),
             step=1,
-            title=self.figures[plane].model.title.text,
+            title=self.figures[plane].figure_model.title.text,
             name=f'{plane.name}_slider',
         )
         self.sliders[plane].on_change(
             'value', partial(self.update_plane_index, plane=plane))
-        self.widgets.append(self.sliders[plane])
         return self.sliders[plane]
-
-    def update_plane_index(self, attr, old, new, plane: Plane):
-        self.plane_indices.data[plane.name] = [new]
 
     def create_sliders(self) -> None:
         for plane in self.sliders:
@@ -137,45 +131,21 @@ class Series:
     def set_slider_value(self, plane: Plane, value: int):
         self.sliders[plane].value = self._fix_index(plane, value)
 
-    def handle_mouse_wheel(self, event: MouseWheel, plane: Plane):
-        current_value = self.sliders[plane].value
-        if event.delta > 0:
-            self.set_slider_value(plane, current_value + 1)
-        elif event.delta < 0:
-            self.set_slider_value(plane, current_value - 1)
-
-    def handle_tap(self, event: Tap, plane: Plane):
-        x, y = int(event.x), int(event.y)
-        x_plane = self.get_crosshair_line_plane(plane, CrosshairLines.VERTICAL)
-        y_plane = self.get_crosshair_line_plane(plane,
-                                                CrosshairLines.HORIZONTAL)
-        self.set_slider_value(x_plane, x)
-        self.set_slider_value(y_plane, y)
-
-    def add_wheel_interaction(self, plane: Plane):
-        fig = self.figures[plane].model
-        fig.on_event(MouseWheel, partial(self.handle_mouse_wheel, plane=plane))
-
-    def add_click_interaction(self, plane: Plane):
-        fig = self.figures[plane].model
-        fig.on_event(Tap, partial(self.handle_tap, plane=plane))
-
     def create_checkbox(self):
         self.visibility_checkbox = CheckboxButtonGroup(
             labels=['Crosshair', 'Axes'], active=[0])
         self.visibility_checkbox.on_change('active', self.handle_checkbox)
-        self.widgets.append(self.visibility_checkbox)
         return self.visibility_checkbox
 
     def remove_plot_axes(self):
         for plane in self.figures:
-            self.figures[plane].model.xaxis.visible = False
-            self.figures[plane].model.yaxis.visible = False
+            self.figures[plane].figure_model.xaxis.visible = False
+            self.figures[plane].figure_model.yaxis.visible = False
 
     def show_plot_axes(self):
         for plane in self.figures:
-            self.figures[plane].model.xaxis.visible = True
-            self.figures[plane].model.yaxis.visible = True
+            self.figures[plane].figure_model.xaxis.visible = True
+            self.figures[plane].figure_model.yaxis.visible = True
 
     def remove_crosshairs(self):
         for plane in self.figures:
@@ -200,7 +170,6 @@ class Series:
         self.histogram_toggle = Toggle(label='Histogram')
         self.histogram_toggle.callback = self.create_histogram_toggle_callback(
         )
-        self.widgets.append(self.histogram_toggle)
         return self.histogram_toggle
 
     def get_checkbox_index(self, label: str) -> int:
@@ -224,7 +193,6 @@ class Series:
             options=list(palette_dict.keys()),
         )
         self.palette_select.on_change('value', self.handle_palette_change)
-        self.widgets.append(self.palette_select)
         return self.palette_select
 
     def handle_palette_change(self, attr, old, new):
@@ -234,14 +202,36 @@ class Series:
             glyph.color_mapper = LinearColorMapper(palette=palette)
 
     def create_plane_figure(self, plane: Plane):
+        self.figures[plane].create_layout()
         self.update_crosshair(plane)
-        layout = self.figures[plane].create_layout()
-        self.layout.children.append(layout)
         self.add_interactions(plane)
 
     def add_interactions(self, plane: Plane):
         self.add_wheel_interaction(plane)
         self.add_click_interaction(plane)
+
+    def add_wheel_interaction(self, plane: Plane):
+        fig = self.figures[plane].figure_model
+        fig.on_event(MouseWheel, partial(self.handle_mouse_wheel, plane=plane))
+
+    def add_click_interaction(self, plane: Plane):
+        fig = self.figures[plane].figure_model
+        fig.on_event(Tap, partial(self.handle_tap, plane=plane))
+
+    def handle_mouse_wheel(self, event: MouseWheel, plane: Plane):
+        current_value = self.sliders[plane].value
+        if event.delta > 0:
+            self.set_slider_value(plane, current_value + 1)
+        elif event.delta < 0:
+            self.set_slider_value(plane, current_value - 1)
+
+    def handle_tap(self, event: Tap, plane: Plane):
+        x, y = int(event.x), int(event.y)
+        x_plane = self.get_crosshair_line_plane(plane, CrosshairLines.VERTICAL)
+        y_plane = self.get_crosshair_line_plane(plane,
+                                                CrosshairLines.HORIZONTAL)
+        self.set_slider_value(x_plane, x)
+        self.set_slider_value(y_plane, y)
 
     def create_crosshair_color_select(self):
         self.crosshair_color_select = Select(
@@ -250,7 +240,6 @@ class Series:
             options=crosshair_colors)
         self.crosshair_color_select.on_change('value',
                                               self.change_crosshair_color)
-        self.widgets.append(self.crosshair_color_select)
         return self.crosshair_color_select
 
     def change_crosshair_color(self, attr, old, new):
@@ -264,10 +253,30 @@ class Series:
         self.create_palette_select()
         self.create_crosshair_color_select()
         self.create_checkbox()
-        self.append_widgets()
 
-    def append_widgets(self):
-        self.layout.children.append(widgetbox(self.widgets))
+    def create_widgetbox(self):
+        box = widgetbox(
+            self.histogram_toggle,
+            self.sliders[Plane.TRANSVERSE],
+            self.sliders[Plane.SAGITTAL],
+            self.sliders[Plane.CORONAL],
+            self.palette_select,
+            self.crosshair_color_select,
+            self.visibility_checkbox,
+        )
+        return box
+
+    def create_layout(self):
+        figures = [fig.layout_model for fig in self.figures.values()]
+        layout = row([*figures, self.create_widgetbox()], name='main')
+        return layout
+
+    def get_layout(self):
+        return curdoc().get_model_by_name('main')
+
+    @property
+    def layout(self):
+        return self.get_layout() or self.create_layout()
 
     def run(self):
         for plane in self.figures:

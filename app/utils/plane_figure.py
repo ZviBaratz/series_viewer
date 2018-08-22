@@ -12,11 +12,7 @@ from .plane import Plane
 
 class PlaneFigure:
     _image = None
-    model = None
-    image_model = None
-    crosshair_model = None
     histogram = None
-    layout = None
 
     def __init__(
             self,
@@ -26,65 +22,87 @@ class PlaneFigure:
     ):
         self.plane = plane
         self.index = index
-
         self.crosshair_dict = crosshair_line_dict[self.plane]
 
-        self.source = ColumnDataSource()
-        self.crosshair_source = ColumnDataSource()
-
+        self.create_figure_model()
+        # self.create_image_model()
+        self.create_crosshair_model()
         self.create_histogram()
         if image:
             self.image = image
 
     def _update_image_source(self, image: np.ndarray):
-        self.source.data['image'] = [image]
-        self.source.data['dw'] = [image.shape[1]]
-        self.source.data['dh'] = [image.shape[0]]
+        new_data = dict(
+            image=[image],
+            dw=[image.shape[1]],
+            dh=[image.shape[0]],
+        )
+        self.image_model.data_source.data = new_data
 
     def _update_crosshair_source(self, vertical_line: list,
                                  horizontal_line: list):
-        self.crosshair_source.data = dict(
+        self.crosshair_model.data_source.data = dict(
             x=[self.x_range, vertical_line],
             y=[horizontal_line, self.y_range],
         )
 
-    def generate_model(self):
-        self.model = figure(
-            plot_width=self.width * 2,
-            plot_height=self.height * 2,
-            x_range=[0, self.width],
-            y_range=[0, self.height],
+    def create_figure_model(self):
+        figure_model = figure(
+            # plot_width=int(self.width * 1.8),
+            # plot_height=int(self.height * 1.8),
+            # x_range=[0, self.width],
+            # y_range=[0, self.height],
+            plot_width=100,
+            plot_height=100,
+            x_range=[0, 100],
+            y_range=[0, 100],
             title=f'{self.plane.name.capitalize()} View',
-            name=self.plane.name.lower(),
+            name=self.plane.name,
         )
-        self.model.xaxis.visible = False
-        self.model.yaxis.visible = False
-        return self.model
+        figure_model.xaxis.visible = False
+        figure_model.yaxis.visible = False
+        return figure_model
 
-    def plot_image(self):
-        self.image_model = self.model.image(
+    def get_figure_model(self):
+        return curdoc().get_model_by_name(self.plane.name)
+
+    def create_image_model(self):
+        if self.image:
+            source = ColumnDataSource(
+                data=dict(
+                    image=[self.image],
+                    dw=[self.image.shape[1]],
+                    dh=[self.image.shape[0]],
+                ))
+        else:
+            source = ColumnDataSource(data=dict(image=[], dw=[], dh=[]))
+        plot = self.figure_model.image(
             image='image',
             x=0,
             y=0,
             dw='dw',
             dh='dh',
-            source=self.source,
+            source=source,
             palette=get_default_palette(),
-            name=f'{self.plane.name.lower()}_plot',
+            name=f'{self.plane.name}_image',
         )
-        self.histogram.width = self.model.plot_width - 40
-        return self.image_model
+        return plot
 
-    def plot_crosshair(self):
-        self.model.multi_line(
+    def get_image_model(self):
+        return curdoc().get_model_by_name(f'{self.plane.name}_image')
+
+    def create_crosshair_model(self):
+        source = ColumnDataSource(data=dict(x=[], y=[]))
+        crosshair = self.figure_model.multi_line(
             'x',
             'y',
-            source=self.crosshair_source,
+            source=source,
             color='black',
             alpha=0.4,
             line_width=1,
             name=f'{self.plane.name}_crosshair',
         )
+        return crosshair
 
     def get_crosshair_model(self):
         return curdoc().get_model_by_name(f'{self.plane.name}_crosshair')
@@ -130,34 +148,44 @@ class PlaneFigure:
             self.histogram.disabled = True
         self.histogram.value = (self.image.min(), self.image.max())
 
-    def plot_figure(self):
-        self.plot_image()
-        self.plot_crosshair()
-
     def create_layout(self):
-        self.plot_figure()
-        self.layout = column([
-            widgetbox(
-                self.histogram, css_classes=[f'histogram_range', 'hidden']),
-            self.model
-        ])
-        return self.layout
+        layout = column(
+            [
+                widgetbox(
+                    self.histogram, css_classes=[f'histogram_range', 'hidden'
+                                                 ]), self.figure_model
+            ],
+            name=f'{self.plane.name}_layout')
+        return layout
+
+    def get_layout_model(self):
+        return curdoc().get_model_by_name(f'{self.plane.name}_layout')
 
     @property
     def width(self) -> int:
-        return self.image.shape[1]
+        if isinstance(self.image, np.ndarray):
+            return self.image.shape[1]
+        return None
 
     @property
     def x_range(self) -> np.ndarray:
-        return np.arange(self.width)
+        if isinstance(self.image, np.ndarray):
+            # return np.arange(self.width)
+            return [0, self.width]
+        return None
 
     @property
     def height(self) -> int:
-        return self.image.shape[0]
+        if isinstance(self.image, np.ndarray):
+            return self.image.shape[0]
+        return None
 
     @property
     def y_range(self) -> np.ndarray:
-        return np.arange(self.height)
+        if isinstance(self.image, np.ndarray):
+            # return np.arange(self.height)
+            return [0, self.height]
+        return None
 
     @property
     def image(self) -> np.ndarray:
@@ -165,12 +193,31 @@ class PlaneFigure:
 
     @image.setter
     def image(self, value: np.ndarray) -> None:
-        self._update_image_source(value)
+        if self.plane in (Plane.SAGITTAL, Plane.CORONAL):
+            value = np.transpose(value)
         self._image = value
+        self.figure_model.plot_width = 200
+        # print(type(self.figure_model.plot_width))
+        # print(dir(self.figure_model))
+        self.figure_model.plot_height = self.height * 2
+        self.figure_model.x_range.end = self.width
+        self.figure_model.y_range.end = self.height
+        self._update_image_source(value)
+        self.histogram.width = self.figure_model.plot_width - 40
         self.update_histogram_range()
-        if not self.model:
-            self.generate_model()
+
+    @property
+    def figure_model(self):
+        return self.get_figure_model()
+
+    @property
+    def image_model(self):
+        return self.get_image_model() or self.create_image_model()
 
     @property
     def crosshair_model(self):
-        return self.get_crosshair_model()
+        return self.get_crosshair_model() or self.create_crosshair_model()
+
+    @property
+    def layout_model(self):
+        return self.get_layout_model() or self.create_layout()
