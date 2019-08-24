@@ -14,7 +14,7 @@ from bokeh.palettes import (
     Colorblind8,
 )
 
-DEFAULT_PALETTE = 'Spectral'
+DEFAULT_PALETTE = 'Greys'
 
 palette_dict = {
     'Spectral': Spectral11,

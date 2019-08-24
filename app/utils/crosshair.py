@@ -23,10 +23,11 @@ crosshair_line_dict = {
 }
 
 crosshair_colors = [
+    'Lime',
+    'Green',
     'Black',
     'White',
     'Red',
-    'Green',
     'Cyan',
     'Yellow',
     'Blue',
@@ -35,7 +36,6 @@ crosshair_colors = [
     'Pink',
     'Brown',
     'Indigo',
-    'Lime',
     'Grey',
 ]
 

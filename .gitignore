@@ -2,3 +2,5 @@
 # Data
 *.npy
 .vscode
+*/__pycache__/
+venv
