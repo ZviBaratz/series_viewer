@@ -1,0 +1,31 @@
+Metadata-Version: 2.1
+Name: series-viewer
+Version: 0.1.0
+Summary: A bokeh application to view 2D slices from a 3D matrix.
+Home-page: https://github.com/ZviBaratz/series_viewer
+Author: Zvi Baratz
+Author-email: z.baratz@gmail.com
+License: MIT
+Description: # MRI Series Viewer
+        
+        A [bokeh](https://bokeh.pydata.org/en/latest/index.html) app to display 3D data.
+        The app expects a `data.npy` file to be present in the working directory.
+        
+        To run, execute:
+        
+        ```python
+        
+            bokeh serve app
+        
+        ```
+        
+Keywords: bokeh mri neuroimaging research
+Platform: UNKNOWN
+Classifier: Environment :: Web Environment
+Classifier: Intended Audience :: Researchers
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: OS Independent
+Classifier: Programming Language :: Python
+Classifier: Programming Language :: Python :: 3.6
+Description-Content-Type: text/markdown
+Provides-Extra: dev
