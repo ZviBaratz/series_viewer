@@ -1,6 +1,7 @@
 
 # Data
+*.egg-info
 *.npy
 .vscode
-*/__pycache__/
+__pycache__/
 venv
